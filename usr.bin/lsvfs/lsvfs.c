@@ -5,10 +5,12 @@
  *
  */
 
+#include <sys/capsicum.h>
 #include <sys/param.h>
 #include <sys/mount.h>
 #include <sys/sysctl.h>
 
+#include <capsicum_helpers.h>
 #include <err.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -44,6 +46,18 @@ main(int argc, char **argv)
 
 	argc--, argv++;
 
+	if (sysctlbyname("vfs.conflist", NULL, &buflen, NULL, 0) < 0)
+		err(EXIT_FAILURE, "sysctl(vfs.conflist)");
+	if ((xvfsp = malloc(buflen)) == NULL)
+		errx(EXIT_FAILURE, "malloc failed");
+	if (sysctlbyname("vfs.conflist", xvfsp, &buflen, NULL, 0) < 0)
+		err(EXIT_FAILURE, "sysctl(vfs.conflist)");
+	cnt = buflen / sizeof(struct xvfsconf);
+
+	caph_cache_catpages();
+	if (caph_enter_casper() != 0)
+		err(EXIT_FAILURE, "failed to enter capability mode");
+
 	printf(HDRFMT, "Filesystem", "Num", "Refs", "Flags");
 	fputs(DASHES, stdout);
 
@@ -58,14 +72,6 @@ main(int argc, char **argv)
 			}
 		}
 	} else {
-		if (sysctlbyname("vfs.conflist", NULL, &buflen, NULL, 0) < 0)
-			err(EXIT_FAILURE, "sysctl(vfs.conflist)");
-		if ((xvfsp = malloc(buflen)) == NULL)
-			errx(EXIT_FAILURE, "malloc failed");
-		if (sysctlbyname("vfs.conflist", xvfsp, &buflen, NULL, 0) < 0)
-			err(EXIT_FAILURE, "sysctl(vfs.conflist)");
-		cnt = buflen / sizeof(struct xvfsconf);
-
 		for (size_t i = 0; i < cnt; i++) {
 			printf(FMT, xvfsp[i].vfc_name, xvfsp[i].vfc_typenum,
 			    xvfsp[i].vfc_refcount,
